@@ -305,9 +305,9 @@ class SpeechT5Task(LegacyFairseqTask):
         # Prepare config
         config = None
         logger.info('No config file for ' + args.t5_task)
-
         if args.t5_task == "pretrain":
             dicts["hubert"] = [Dictionary.load(f"{args.hubert_label_dir}/dict.{label}.txt") for label in args.hubert_labels]
+            breakpoint()
             dicts["text"] = Dictionary.load(op.join(args.data, "dict.txt"))
         else:
             if config is None:

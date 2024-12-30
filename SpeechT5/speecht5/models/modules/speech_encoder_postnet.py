@@ -41,6 +41,7 @@ class SpeechEncoderPostnet(nn.Module):
             )
         else:
             self.num_classes = [len(d) for d in dictionaries]
+            breakpoint()
             self.label_embs_concat = nn.Parameter(
                 torch.FloatTensor(sum(self.num_classes), final_dim)
             )

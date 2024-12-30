@@ -92,6 +92,7 @@ class T5TransformerModel(FairseqEncoderDecoderModel):
 
         self.use_codebook = args.use_codebook
         self.codebook_prob = getattr(args, "codebook_prob", 0.5) # args.codebook_prob
+        breakpoint()
         if self.use_codebook:
             vq_dim = args.latent_dim if args.latent_dim > 0 else args.encoder_embed_dim
             self.quantizer = GumbelVectorQuantizer(
@@ -1253,6 +1254,7 @@ class T5TransformerModel(FairseqEncoderDecoderModel):
 def base_architecture(args):
     # Transformer
     args.bert_init = getattr(args, "bert_init", False)
+    breakpoint()
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 768)
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 768 * 4)
     args.encoder_layers = getattr(args, "encoder_layers", 12)

@@ -11,7 +11,8 @@ import re
 from dataclasses import dataclass
 
 import math
-from fairseq import metrics, utils
+from fairseq.logging import metrics
+from fairseq import utils
 from fairseq.criterions import FairseqCriterion, register_criterion
 from speecht5.criterions.text_to_speech_loss import TexttoSpeechLoss
 from speecht5.criterions.text_pretrain_criterion import TextPretrainCriterion, TextPretrainCriterionConfig

@@ -14,7 +14,8 @@ from typing import List, Optional
 
 import torch
 import torch.nn.functional as F
-from fairseq import metrics, utils
+from fairseq.logging import metrics
+from fairseq import utils
 from fairseq.criterions import FairseqCriterion
 from speecht5.criterions.text_to_speech_loss import TexttoSpeechLoss, TexttoSpeechLossConfig
 

@@ -10,7 +10,8 @@
 from dataclasses import dataclass, field
 
 import torch
-from fairseq import metrics, utils
+from fairseq.logging import metrics
+from fairseq import utils
 from espnet.nets.pytorch_backend.nets_utils import make_non_pad_mask
 from fairseq.criterions import FairseqCriterion, register_criterion
 from fairseq.dataclass import FairseqDataclass
