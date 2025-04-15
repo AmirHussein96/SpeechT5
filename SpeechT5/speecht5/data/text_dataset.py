@@ -213,7 +213,10 @@ class TextPretrainDataset(FairseqDataset):
         # there can additional changes to make:
         if self.item_transform_func is not None:
             source, target = self.item_transform_func(source, target)
-
+        #Amir
+        # print(f"Source tensor shape: {source.shape}, Value: {source}")
+        if source.dim() == 0:
+            raise ValueError(f"Unexpected zero-dimensional tensor: {source}")
         assert (source >= 0).all()
         assert (source[1:-1] >= 1).all()
         assert (source <= len(self.vocab)).all()

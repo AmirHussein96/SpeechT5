@@ -252,11 +252,13 @@ class TransformerEncoder(FairseqEncoder):
             dropout_probability = np.random.random()
 
             with torch.no_grad() if (not ft) and i not in self.no_freeze_encoder_layer else contextlib.ExitStack():
+                
                 if not self.training or (dropout_probability > self.encoder_layerdrop) or i == self.unb_enc_layer:
                     if self.use_sent_enc_layer:
                         x, _ = layer(x, self_attn_padding_mask=encoder_padding_mask, self_attn_mask=None, need_weights=False, pos_bias=pos_k)
                         # x, _ = layer(x, self_attn_padding_mask=encoder_padding_mask, need_weights=False, pos_bias=pos_k)
                     else:
+                        # breakpoint()
                         x = layer(x, encoder_padding_mask=encoder_padding_mask if has_pads else None, attn_mask=None)
                         # x = layer(x, encoder_padding_mask=encoder_padding_mask if has_pads else None)
                 if i == self.unb_enc_layer:

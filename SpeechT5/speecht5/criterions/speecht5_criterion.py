@@ -111,6 +111,7 @@ class SpeechT5Criterion(FairseqCriterion):
         """
 
         task_name = sample['task_name']
+        # breakpoint()
         if task_name == 's2t' or task_name == 's2c':
             return self.text_criterion(model, sample, reduce)
         elif task_name == 't2s' or task_name == 's2s':

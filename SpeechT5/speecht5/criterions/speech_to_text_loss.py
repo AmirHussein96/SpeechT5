@@ -331,9 +331,24 @@ class SpeechtoTextLoss(FairseqCriterion):
                 input_lengths,
                 target_lengths,
                 blank=self.blank_idx,
-                reduction="sum",
+                reduction="none",  # No reduction for individual losses
                 zero_infinity=self.zero_infinity,
             )
+                    # Check for finite values
+            loss_is_finite = torch.isfinite(loss_ctc)
+            inf_flag = False
+            if not torch.all(loss_is_finite):
+                inf_flag = True
+                logging.info(
+                    "Not all CTC losses are finite!\n"
+                    f"CTC Losses: {loss_ctc}\n"
+                )
+                # Optionally display or save the problematic batch here if needed
+                loss_ctc = loss_ctc[loss_is_finite]  # Filter out invalid losses
+            if loss_ctc.numel() > 0:
+                loss_ctc = loss_ctc.sum()
+            else:
+                loss_ctc = torch.tensor(0.0, device=loss_ctc.device)
 
         return loss_ctc, lprobs, input_lengths
 
@@ -374,7 +389,7 @@ class SpeechtoTextLoss(FairseqCriterion):
     @staticmethod
     def reduce_metrics(logging_outputs) -> None:
         """Aggregate logging outputs from data parallel training."""
-
+       # breakpoint()
         loss_sum = utils.item(sum(log.get("loss", 0) for log in logging_outputs))
         nll_loss_sum = sum(log.get("nll_loss", 0) for log in logging_outputs)
         ce_loss_sum = sum(log.get("ce_loss", 0) for log in logging_outputs)

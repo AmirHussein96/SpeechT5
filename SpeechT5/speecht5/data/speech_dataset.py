@@ -207,6 +207,9 @@ class SpeechPretrainDataset(FairseqDataset):
         self.audio_root, self.audio_names, inds, tot, self.sizes, self.spk_embeds = load_audio(
             manifest_path, max_keep_sample_size, min_keep_sample_size
         )
+        # breakpoint()
+        # Amir: added this to solve the issue of spk dir
+        self.spkdir = os.path.dirname(os.path.dirname(manifest_path))
         self.sample_rate = sample_rate
         self.shuffle = shuffle
         self.random_crop = random_crop
@@ -278,8 +281,12 @@ class SpeechPretrainDataset(FairseqDataset):
     def __getitem__(self, index):
         wav, fbank = self.get_audio(index)
         labels = self.get_labels(index)
+        # breakpoint()
+        # spkembs = get_features_or_waveform(
+        #     os.path.join(self.audio_root, self.spk_embeds[index])
+        # )
         spkembs = get_features_or_waveform(
-            os.path.join(self.audio_root, self.spk_embeds[index])
+            os.path.join(self.spkdir, self.spk_embeds[index])
         )
         spkembs = torch.from_numpy(spkembs).float()
         return {"id": index, "source": wav, "target": fbank, "label_list": labels, 'spkembs': spkembs}

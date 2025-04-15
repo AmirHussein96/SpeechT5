@@ -269,6 +269,10 @@ class SequenceGenerator(nn.Module):
         ), "min_len cannot be larger than max_len, please adjust these!"
         # compute the encoder output for each beam
         encoder_outs = self.model.forward_encoder(net_input)
+        if next(self.model.parameters()).is_cuda:
+            print("Model is on GPU")
+        else:
+            print("Model is not on GPU")
 
         # Get CTC lprobs and prep ctc_scorer
         if self.ctc_weight > 0:
@@ -376,8 +380,12 @@ class SequenceGenerator(nn.Module):
                 if self.mask_idxs.size(0) != 0:
                     ctc_lprobs[:, self.mask_idxs] = -math.inf # never select mask
                 local_best_scores, local_best_ids = torch.topk(ctc_lprobs, ctc_beam, dim=-1)
+                
+                # breakpoint()
                 for b in range(tokens.size(0)):
                     hyp_key = " ".join(str(x) for x in tokens[b, : step + 1].tolist())
+                    # print(f"Checking key: {hyp_key}")
+                    # print(f"Existing keys: {list(ctc_hyps.keys())[:10]}")
                     ctc_scores, ctc_states = ctc_prefix_score(
                         tokens[b, : step + 1].cpu(), local_best_ids[b].cpu(), ctc_hyps[hyp_key]["ctc_state_prev"]
                     )
@@ -395,6 +403,7 @@ class SequenceGenerator(nn.Module):
                 # )
                 # lprobs += local_ctc_scores * self.ctc_weight
             elif self.ctc_weight > 0 and step == 0:
+                # breakpoint()
                 ctc_lprobs = lprobs.clone()
                 ctc_lprobs[:, self.blank] = -math.inf # never select blank
                 if self.mask != self.unk:
@@ -416,7 +425,7 @@ class SequenceGenerator(nn.Module):
                             ctc_hyps[hyp_key + " " + str(local_best_ids[b][j].item())] = {}
                             ctc_hyps[hyp_key + " " + str(local_best_ids[b][j].item())]["ctc_score_prev"] = ctc_scores[j]
                             ctc_hyps[hyp_key + " " + str(local_best_ids[b][j].item())]["ctc_state_prev"] = ctc_states[j]
-
+            # breakpoint()
             if self.lm_model is not None:
                 lm_out = self.lm_model(tokens[:, : step + 1])
                 probs = self.lm_model.get_normalized_probs(
@@ -426,6 +435,7 @@ class SequenceGenerator(nn.Module):
                 lprobs[:, :probs.size(1)] += probs
 
             # handle prefix tokens (possibly with different lengths)
+            
             if (
                 prefix_tokens is not None
                 and step < prefix_tokens.size(1)
@@ -434,6 +444,7 @@ class SequenceGenerator(nn.Module):
                 lprobs, tokens, scores = self._prefix_tokens(
                     step, lprobs, scores, tokens, prefix_tokens, beam_size
                 )
+            # breakpoint()
             elif step < self.min_len:
                 # minimum length constraint (does not apply if using prefix_tokens)
                 lprobs[:, self.eos] = -math.inf
@@ -476,6 +487,7 @@ class SequenceGenerator(nn.Module):
                 lprobs = self.repeat_ngram_blocker(tokens, lprobs, bsz, beam_size, step)
 
             # Shape: (batch, cand_size)
+            # print(f"local_best_ids: {local_best_ids}")
             cand_scores, cand_indices, cand_beams = self.search.step(
                 step,
                 lprobs.view(bsz, -1, self.vocab_size),
@@ -531,6 +543,7 @@ class SequenceGenerator(nn.Module):
 
             # Remove finalized sentences (ones for which {beam_size}
             # finished hypotheses have been generated) from the batch.
+            # breakpoint()
             if len(finalized_sents) > 0:
                 new_bsz = bsz - len(finalized_sents)
 

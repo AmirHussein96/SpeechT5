@@ -91,6 +91,7 @@ class TransformerSentenceEncoderLayer(nn.Module):
             x = self.self_attn_layer_norm(x)
             if pos_bias is not None:
                 pos_bias = self.norm_k(pos_bias)
+            
             x, attn = self.self_attn(
                 query=x,
                 key=x,
@@ -110,6 +111,7 @@ class TransformerSentenceEncoderLayer(nn.Module):
             x = self.dropout3(x)
             x = residual + x
         else:
+            # breakpoint()
             x, attn = self.self_attn(
                 query=x,
                 key=x,

@@ -175,6 +175,12 @@ class MultiheadAttention(nn.Module):
             and not self.has_relative_attention_bias
         ):
             assert key is not None and value is not None
+            if attn_mask is not None:
+                # breakpoint()
+                attn_mask = attn_mask.to(dtype=query.dtype)
+            
+            # print(f"query dtype: {query.dtype}")
+            # print(f"bias dtype: {self.q_proj.bias.dtype}")
             return F.multi_head_attention_forward(
                 query,
                 key,

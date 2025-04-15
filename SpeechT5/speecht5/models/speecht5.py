@@ -92,7 +92,7 @@ class T5TransformerModel(FairseqEncoderDecoderModel):
 
         self.use_codebook = args.use_codebook
         self.codebook_prob = getattr(args, "codebook_prob", 0.5) # args.codebook_prob
-        breakpoint()
+        # breakpoint()
         if self.use_codebook:
             vq_dim = args.latent_dim if args.latent_dim > 0 else args.encoder_embed_dim
             self.quantizer = GumbelVectorQuantizer(
@@ -251,8 +251,21 @@ class T5TransformerModel(FairseqEncoderDecoderModel):
             "--encoder-speech-prenet",
             default="conv",
             type=str,
-            choices=["conv", "linear"],
-            help="The type of encoder speech prenet, e.g., conv or linear."
+            choices=["conv", "linear", "mel"],
+            help="The type of encoder speech prenet, e.g., conv or linear or mel."
+        )
+        parser.add_argument(
+            "--mel-hop-scale",
+            type=int,
+            default=2,
+            help="the hop size scaler for the speech encoder prenet's mel feature extractor "
+            "this dictates the hop size based on the conv_feature_layers"
+        )
+        parser.add_argument(
+            "--num-mels",
+            type=int,
+            default=80,
+            help="number of mel features to extract for the prenet"
         )
         parser.add_argument(
             "--conv-kernel-sizes",
@@ -871,6 +884,7 @@ class T5TransformerModel(FairseqEncoderDecoderModel):
             ).transpose(0, 1)
 
             # encoder_output["encoder_out"][0] = q["x"].transpose(0, 1)
+            # breakpoint()
             if output_type == 'speech':
                 hubert_results["prob_perplexity"] = q["prob_perplexity"]
                 hubert_results["code_perplexity"] = q["code_perplexity"]
@@ -1254,7 +1268,6 @@ class T5TransformerModel(FairseqEncoderDecoderModel):
 def base_architecture(args):
     # Transformer
     args.bert_init = getattr(args, "bert_init", False)
-    breakpoint()
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 768)
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 768 * 4)
     args.encoder_layers = getattr(args, "encoder_layers", 12)

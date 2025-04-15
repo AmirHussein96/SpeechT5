@@ -56,6 +56,7 @@ class MultitaskDataset(FairseqDataset):
     def __getitem__(self, idx):
         dataset_idx, sample_idx = self._get_dataset_and_sample_index(idx)
         sample = self.datasets[dataset_idx][sample_idx]
+        # print(f"Sample from dataset {dataset_idx}: {sample}")
         if isinstance(sample, dict):
             sample["dataset_idx"] = dataset_idx
         else:

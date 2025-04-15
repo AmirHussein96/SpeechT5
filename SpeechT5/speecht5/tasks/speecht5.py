@@ -307,7 +307,6 @@ class SpeechT5Task(LegacyFairseqTask):
         logger.info('No config file for ' + args.t5_task)
         if args.t5_task == "pretrain":
             dicts["hubert"] = [Dictionary.load(f"{args.hubert_label_dir}/dict.{label}.txt") for label in args.hubert_labels]
-            breakpoint()
             dicts["text"] = Dictionary.load(op.join(args.data, "dict.txt"))
         else:
             if config is None:
@@ -325,10 +324,11 @@ class SpeechT5Task(LegacyFairseqTask):
         sample_ratios = []
         if self.t5_task == "s2t":
             ## For speech to text task
+            # breakpoint()
             bpe_tokenizer = self.build_bpe(self.args)
             manifest = f"{self.args.data}/{split}.tsv"
             procs = [LabelEncoder(self.dicts["text"])]
-            paths = [f"{self.args.hubert_label_dir}/{split}.txt"]
+            paths = [f"{self.args.hubert_label_dir}/{split}.wrd"]
             self.datasets[split] = SpeechToTextDataset(
                 manifest,
                 sample_rate=self.args.sample_rate,
@@ -530,6 +530,7 @@ class SpeechT5Task(LegacyFairseqTask):
             nonlocal agg_loss, agg_logging_output
             if samples is None or len(samples) == 0:
                 return
+           # breakpoint()
             loss, sample_size, logging_output = criterion(model, samples)
             if ignore_grad:
                 loss *= 0
@@ -563,9 +564,18 @@ class SpeechT5Task(LegacyFairseqTask):
             agg_loss, agg_sample_size, agg_logging_output = 0.0, 1.0, defaultdict(float)
             agg_logging_output['sample_size'] = 1
             loss, sample_size, logging_output = criterion(model, sample)
+
             loss = loss / sample_size
             # agg_loss += loss.data.item() if isinstance(loss, torch.Tensor) else loss
             agg_loss += loss.item() if isinstance(loss, torch.Tensor) else loss
+
+            # Amir: Check for `inf` in ctc_loss
+            ctc_loss = logging_output.get('ctc_loss', 0.0)
+            if ctc_loss == float('inf'):
+                print("Debugging: CTC loss is inf.")
+                # breakpoint()  # Set a breakpoint for debugging
+                # loss, sample_size, logging_output = criterion(model, sample)
+
             agg_logging_output[sample['task_name']] = logging_output
             agg_logging_output["loss"] = agg_loss
         return agg_loss, agg_sample_size, agg_logging_output

@@ -89,6 +89,7 @@ class SpeechToTextDataset(FairseqDataset):
         self.audio_root, self.audio_names, inds, tot, self.wav_sizes = load_audio(
             manifest_path, max_keep_sample_size, min_keep_sample_size
         )
+       # breakpoint()
         self.sample_rate = sample_rate
         self.shuffle = shuffle
         self.tgt_dict = tgt_dict
@@ -105,7 +106,7 @@ class SpeechToTextDataset(FairseqDataset):
                 load_label_offset(p, inds, tot) for p in label_paths
             ]
         assert label_processors is None or len(label_processors) == self.num_labels
-
+        #breakpoint()
         self.normalize = normalize
         logger.info(
             f"normalize={normalize}"
@@ -123,17 +124,21 @@ class SpeechToTextDataset(FairseqDataset):
     def get_label(self, index, label_idx):
         if self.store_labels:
             label = self.label_list[label_idx][index]
+            # convert to lower
+            label = label.lower()
         else:
             with open(self.label_paths[label_idx]) as f:
                 offset_s, offset_e = self.label_offsets_list[label_idx][index]
                 f.seek(offset_s)
                 label = f.read(offset_e - offset_s)
-
+                label = label.lower()
         if self.tokenizer is not None:
+
             label = self.tokenizer.encode(label)
 
         if self.label_processors is not None:
             label = self.label_processors[label_idx](label)
+        #print(f"Index {index}: Raw Label = {label}")
         return label
 
     def get_labels(self, index):
