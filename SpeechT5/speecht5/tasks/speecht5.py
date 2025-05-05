@@ -58,6 +58,13 @@ class SpeechT5Task(LegacyFairseqTask):
             help="max speech sample size",
         )
         parser.add_argument(
+            "--input-type",
+            type=str,
+            choices=["waveform", "fbank"],
+            default="waveform",
+            help="Specify input type: raw waveform or precomputed fbank features"
+        )
+        parser.add_argument(
             "--min-speech-sample-size",
             default=None,
             type=int,

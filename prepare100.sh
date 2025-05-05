@@ -3,25 +3,27 @@
 set -eou pipefail
 
 log() {
-    # This function is from espnet
     local fname=${BASH_SOURCE[1]##*/}
     echo -e "$(date '+%Y-%m-%d %H:%M:%S') (${fname}:${BASH_LINENO[0]}:${FUNCNAME[1]}) $*"
 }
 root_dir=/export/fs06/ahussei6/multimodal
-data_dir=${root_dir}/data
+data_dir=${root_dir}/data   # directory to store the kmeans model, hubert kmeans labels
+                            # hubert extracted features, xvectors.zip, additional text data
+                            # and all the prepared data for training and finetuning
 ckpt_dir=${root_dir}/models
 n_cluster=500 # Default is 500 from the SpeechT5 paper
 km_path=${data_dir}/kmean100h #${data_dir}/kmeans_model.pt
 lm_data_dir=${data_dir}/raw/librispeech-lm-corpus
 spm_model=${ckpt_dir}/spm_char.model
 train_split=0.95
-org_data_dir=/export/corpora5/LibriSpeech
+org_data_dir=/export/corpora5/LibriSpeech   # the speech corpus
 
 stage=6
 stop_stage=6
 train_suf="100"
-train_sets="train-clean-100"
+train_sets="train-clean-100"    # specifying the training set
 test_sets="test-clean test-other"
+dev_sets="dev-clean dev-other"
 
 tsv_dir=${data_dir}/tsv
 feat_dir=${data_dir}/hubert_features${train_suf}
@@ -30,9 +32,10 @@ text_dir=${data_dir}/text
 nshard=1
 lab_dir=${data_dir}/hubert_km_labels${train_suf}
 ckpt_path=${ckpt_dir}/hubert_base_ls960.pt
+layer=6
+rank=0
 if [ $stage -le 0 ] && [ $stop_stage -ge 0 ]; then
-    layer=6
-    rank=0
+
     log "Stage 0: Prepare HuBERT features using the base model and layer ${layer}..."
     mkdir -p ${feat_dir}
     mkdir -p ${tsv_dir}/raw/valid
@@ -40,13 +43,28 @@ if [ $stage -le 0 ] && [ $stop_stage -ge 0 ]; then
 
     # Process the valid set
     for split in ${dev_sets}; do
-        # Create a proxy directory for the split
-        ln -sfv ${org_data_dir}/${split} ${tsv_dir}/raw/valid/${split}
+        
+        # Check if the symlink already exists
+        target=${org_data_dir}/${split} 
+        link=${tsv_dir}/raw/valid/${split}
+        if [ ! -L "$link" ]; then
+            # Create a proxy directory for the split
+            ln -sfv "$target" "$link"
+        else
+            echo "Symlink already exists: $link"
+        fi
     done
-
     for split in ${test_sets}; do
         # Create a proxy directory for the split
-        ln -sfv ${org_data_dir}/${split} ${tsv_dir}/raw/test
+        target=${org_data_dir}/${split} 
+        link=${tsv_dir}/raw/test/${split}
+        if [ ! -L "$link" ]; then
+            # Create a proxy directory for the split
+            ln -sfv "$target" "$link"
+        else
+            echo "Symlink already exists: $link"
+        fi
+        # prepare fairseq tsv 
         python SpeechT5/SpeechT5/fairseq/examples/wav2vec/wav2vec_manifest.py ${tsv_dir}/raw/test/${split} --dest ${tsv_dir}/test --ext flac --valid-percent 0
         # # Rename the file for training
         cp ${tsv_dir}/test/train.tsv ${tsv_dir}/${split}.tsv
@@ -62,7 +80,14 @@ if [ $stage -le 0 ] && [ $stop_stage -ge 0 ]; then
     # Process the training set
     for split in ${train_sets}; do
         # Create a proxy directory for the split
-        ln -sfv ${org_data_dir}/${split} ${tsv_dir}/raw/train/${split}
+        target=${org_data_dir}/${split} 
+        link=${tsv_dir}/raw/train/${split}
+        if [ ! -L "$link" ]; then
+            # Create a proxy directory for the split
+            ln -sfv "$target" "$link"
+        else
+            echo "Symlink already exists: $link"
+        fi
     done
     python  SpeechT5/SpeechT5/fairseq/examples/wav2vec/wav2vec_manifest.py ${tsv_dir}/raw/train/train-clean-${train_suf} --dest ${tsv_dir}/train${train_suf} --ext flac --valid-percent 0
     # Rename the file for training
@@ -70,7 +95,7 @@ if [ $stage -le 0 ] && [ $stop_stage -ge 0 ]; then
 
     # Add speaker embedding to the last column
     # for split in "speech_train"${train_suf} "speech_valid" ; do
-    for split in "speech_valid" "dev_clean" "dev_other" ; do
+    for split in "speech_train"${train_suf}  "speech_valid" "dev_clean" "dev_other" ; do
         python SpeechT5/SpeechT5/scripts/integrate_spkembs.py \
             -i ${tsv_dir}/${split}.tsv \
             --dset librispeech \
@@ -98,9 +123,8 @@ if [ $stage -le 2 ] && [ $stop_stage -ge 2 ]; then
     log "Stage 2: Assign cluster IDs to the HuBERT features..."
     rank=0
     set -x
-    # for split in "speech_valid"; do
-    # for split in "speech_train100" "speech_valid"; do
-    for split in "speech_train"${train_suf}; do
+
+    for split in "speech_train"${train_suf} "speech_valid"; do
         python SpeechT5/SpeechT5/fairseq/examples/hubert/simple_kmeans/dump_km_label.py ${feat_dir} ${split} ${km_path} ${nshard} ${rank} ${lab_dir}
         for rank in $(seq 0 $((nshard - 1))); do
             cat $lab_dir/${split}_${rank}_${nshard}.km
@@ -140,7 +164,7 @@ if [ $stage -le 4 ] && [ $stop_stage -ge 4 ]; then
 
     # Tokenize the text data
     for split in "text_train" "text_valid"; do
-        python /home/cxiao7/research/mult5/SpeechT5/SpeechT5/fairseq/scripts/spm_encode.py \
+        python SpeechT5/SpeechT5/fairseq/scripts/spm_encode.py \
             --model ${spm_model} \
             --output_format=piece \
             --inputs ${text_dir}/${split}.txt \

@@ -225,6 +225,7 @@ class SpeechPretrainDataset(FairseqDataset):
             else label_rates
         )
         self.store_labels = store_labels
+        # breakpoint()
         if store_labels:
             self.label_list = [load_label(p, inds, tot) for p in label_paths]
         else:
@@ -263,6 +264,7 @@ class SpeechPretrainDataset(FairseqDataset):
         return wav, fbank
 
     def get_label(self, index, label_idx):
+        # breakpoint()
         if self.store_labels:
             label = self.label_list[label_idx][index]
         else:
@@ -309,10 +311,12 @@ class SpeechPretrainDataset(FairseqDataset):
     def collater(self, samples):
         # target = max(sizes) -> random_crop not used
         # target = max_sample_size -> random_crop used for long
+        
+        # remove empty samples
         samples = [s for s in samples if s["source"] is not None]
         if len(samples) == 0:
             return {}
-
+        # breakpoint()
         audios = [s["source"] for s in samples]
         audio_sizes = [len(s) for s in audios]
 

@@ -3,16 +3,17 @@
 set -eou pipefail
 
 log() {
-    # This function is from espnet
     local fname=${BASH_SOURCE[1]##*/}
     echo -e "$(date '+%Y-%m-%d %H:%M:%S') (${fname}:${BASH_LINENO[0]}:${FUNCNAME[1]}) $*"
 }
 root_dir=/export/fs06/ahussei6/multimodal
-data_dir=${root_dir}/data
+data_dir=${root_dir}/data   # directory to store the kmeans model, hubert kmeans labels
+                            # hubert extracted features, xvectors.zip, additional text data
+                            # and all the prepared data for training and finetuning
 ckpt_dir=${root_dir}/models
 n_cluster=500 # Default is 500 from the SpeechT5 paper
 km_path=${data_dir}/kmean100h #${data_dir}/kmeans_model.pt
-lm_data_dir=${data_dir}/raw/librispeech-lm-corpus
+lm_data_dir=${data_dir}/raw/librispeech-lm-corpus   # additional text data
 spm_model=${ckpt_dir}/spm_char.model
 train_split=0.95
 org_data_dir=/export/corpora5/LibriSpeech
@@ -20,7 +21,7 @@ org_data_dir=/export/corpora5/LibriSpeech
 stage=5
 stop_stage=5
 
-train_sets="train-clean-100 train-clean-360 train-other-500"
+train_sets="train-clean-100 train-clean-360 train-other-500"    # specifying the training set
 dev_sets="dev-clean dev-other"
 test_sets="test-clean test-other"
 
@@ -42,16 +43,34 @@ if [ $stage -le 0 ] && [ $stop_stage -ge 0 ]; then
 
     # Process the valid set
     for split in ${dev_sets}; do
-        # Create a proxy directory for the split
-        ln -sfv ${org_data_dir}/${split} ${tsv_dir}/raw/valid/${split}
+        
+        # Check if the symlink already exists
+        target=${org_data_dir}/${split} 
+        link=${tsv_dir}/raw/valid/${split}
+        if [ ! -L "$link" ]; then
+            # Create a proxy directory for the split
+            ln -sfv "$target" "$link"
+        else
+            echo "Symlink already exists: $link"
+        fi
     done
     for split in ${test_sets}; do
         # Create a proxy directory for the split
-        ln -sfv ${org_data_dir}/${split} ${tsv_dir}/raw/test
+        target=${org_data_dir}/${split} 
+        link=${tsv_dir}/raw/test/${split}
+        if [ ! -L "$link" ]; then
+            # Create a proxy directory for the split
+            ln -sfv "$target" "$link"
+        else
+            echo "Symlink already exists: $link"
+        fi
+         # prepare fairseq tsv 
         python SpeechT5/SpeechT5/fairseq/examples/wav2vec/wav2vec_manifest.py ${tsv_dir}/raw/test/${split} --dest ${tsv_dir}/test --ext flac --valid-percent 0
         # # Rename the file for training
         cp ${tsv_dir}/test/train.tsv ${tsv_dir}/${split}.tsv
     done
+
+    # prepare all valid sets (dev-clean and dev-other) and produce one tsv file
     python fairseq/examples/wav2vec/wav2vec_manifest.py ${tsv_dir}/raw/valid --dest ${tsv_dir}/valid --ext flac --valid-percent 0
     # # Rename the file for training
     cp ${tsv_dir}/valid/train.tsv ${tsv_dir}/speech_valid.tsv
@@ -59,7 +78,14 @@ if [ $stage -le 0 ] && [ $stop_stage -ge 0 ]; then
     # Process the training set
     for split in ${train_sets}; do
         # Create a proxy directory for the split
-        ln -sfv ${org_data_dir}/${split} ${tsv_dir}/raw/train/${split}
+        target=${org_data_dir}/${split} 
+        link=${tsv_dir}/raw/train/${split}
+        if [ ! -L "$link" ]; then
+            # Create a proxy directory for the split
+            ln -sfv "$target" "$link"
+        else
+            echo "Symlink already exists: $link"
+        fi
     done
     python SpeechT5/SpeechT5/fairseq/examples/wav2vec/wav2vec_manifest.py ${tsv_dir}/raw/train --dest ${tsv_dir}/train --ext flac --valid-percent 0
     # Rename the file for training
@@ -81,7 +107,7 @@ fi
 
 if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
     log "Stage 1: Fit a k-means model to the HuBERT features..."
-    python fairseq/examples/hubert/simple_kmeans/learn_kmeans.py \
+    python SpeechT5/SpeechT5/fairseq/examples/hubert/simple_kmeans/learn_kmeans.py \
         ${feat_dir} \
         speech_train \
         ${nshard} \
@@ -95,8 +121,8 @@ if [ $stage -le 2 ] && [ $stop_stage -ge 2 ]; then
     log "Stage 2: Assign cluster IDs to the HuBERT features..."
     rank=0
     set -x
-    # for split in "speech_train"; do
-    for split in "speech_valid"; do
+
+    for split in "speech_train" "speech_valid"; do
         python SpeechT5/SpeechT5/fairseq/examples/hubert/simple_kmeans/dump_km_label.py ${feat_dir} ${split} ${km_path} ${nshard} ${rank} ${lab_dir}
         for rank in $(seq 0 $((nshard - 1))); do
             cat $lab_dir/${split}_${rank}_${nshard}.km
@@ -136,7 +162,7 @@ if [ $stage -le 4 ] && [ $stop_stage -ge 4 ]; then
 
     # Tokenize the text data
     for split in "text_train" "text_valid"; do
-        python /home/cxiao7/research/mult5/SpeechT5/SpeechT5/fairseq/scripts/spm_encode.py \
+        python SpeechT5/SpeechT5/fairseq/scripts/spm_encode.py \
             --model ${spm_model} \
             --output_format=piece \
             --inputs ${text_dir}/${split}.txt \
@@ -180,7 +206,7 @@ if [ $stage -le 7 ] && [ $stop_stage -ge 7 ]; then
     mkdir -p ${pretrain_data_dir}
 
     # Link the text and speech pretrain data
-     ln -sfv ${text_dir}/bins/* ${pretrain_data_dir}
+    ln -sfv ${text_dir}/bins/* ${pretrain_data_dir}
     ln -sfv ${tsv_dir}/speech_valid_spk.tsv ${pretrain_data_dir}/speech_valid.tsv
     ln -sfv ${tsv_dir}/speech_train_spk.tsv ${pretrain_data_dir}/speech_train.tsv
     ln -sfv $tsv_dir/speech_valid.ltr $pretrain_data_dir

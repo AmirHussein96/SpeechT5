@@ -19,8 +19,8 @@ lm_data_dir=${data_dir}/raw/librispeech-lm-corpus
 spm_model=${ckpt_dir}/spm_char.model
 expdir=${root_dir}/exp
 
-stage=2
-stop_stage=2
+stage=1
+stop_stage=1
 
 tsv_dir=${data_dir}/tsv
 feat_dir=${data_dir}/hubert_features #hubert_features
@@ -32,7 +32,8 @@ if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
     log "Stage 1: Run the pre-training script..."
     # JOBID=$(date +%Y%m%d%H%M%S)
     DATA_ROOT=${data_dir}/pretrain
-    SAVE_DIR=${expdir}/pretrain/base
+    # SAVE_DIR=${expdir}/pretrain/base
+    SAVE_DIR=${expdir}/pretrain/base_test
     LABEL_DIR=${lab_dir}
     TRAIN_SET="speech_train|train"
     VALID_SET="speech_valid|valid"
