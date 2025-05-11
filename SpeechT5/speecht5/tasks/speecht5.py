@@ -313,6 +313,8 @@ class SpeechT5Task(LegacyFairseqTask):
         config = None
         logger.info('No config file for ' + args.t5_task)
         if args.t5_task == "pretrain":
+            breakpoint()
+            print(args.hubert_label_dir)
             dicts["hubert"] = [Dictionary.load(f"{args.hubert_label_dir}/dict.{label}.txt") for label in args.hubert_labels]
             dicts["text"] = Dictionary.load(op.join(args.data, "dict.txt"))
         else:
@@ -403,6 +405,7 @@ class SpeechT5Task(LegacyFairseqTask):
         elif self.t5_task == "pretrain":
             is_train_split = ("train" in split)
             pretrain_datasets = []
+            breakpoint()
             speech_split, text_split = split.split('|')
 
             ## Speech pre-train
@@ -416,6 +419,7 @@ class SpeechT5Task(LegacyFairseqTask):
             ]
             # hubert v1: pad_audio=True, random_crop=False;
             self.args.dec_weight = getattr(self.args, "dec_weight", 1.0)
+            breakpoint()
             pretrain_datasets.append(
                 SpeechPretrainDataset(
                     manifest,
