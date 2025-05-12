@@ -58,13 +58,6 @@ class SpeechT5Task(LegacyFairseqTask):
             help="max speech sample size",
         )
         parser.add_argument(
-            "--input-type",
-            type=str,
-            choices=["waveform", "fbank"],
-            default="waveform",
-            help="Specify input type: raw waveform or precomputed fbank features"
-        )
-        parser.add_argument(
             "--min-speech-sample-size",
             default=None,
             type=int,
@@ -95,6 +88,12 @@ class SpeechT5Task(LegacyFairseqTask):
             type=str,
             default=None,
             help="bpe tokenizer for s2t",
+        )
+        parser.add_argument(
+            "--share-fbank-input",
+            type=bool,
+            default=False,
+            help="If true the same Fbanks input are copied for both encoder and decoder",
         )
         # Speaker Identification (SID)
         parser.add_argument(
@@ -313,8 +312,6 @@ class SpeechT5Task(LegacyFairseqTask):
         config = None
         logger.info('No config file for ' + args.t5_task)
         if args.t5_task == "pretrain":
-            breakpoint()
-            print(args.hubert_label_dir)
             dicts["hubert"] = [Dictionary.load(f"{args.hubert_label_dir}/dict.{label}.txt") for label in args.hubert_labels]
             dicts["text"] = Dictionary.load(op.join(args.data, "dict.txt"))
         else:
@@ -405,7 +402,6 @@ class SpeechT5Task(LegacyFairseqTask):
         elif self.t5_task == "pretrain":
             is_train_split = ("train" in split)
             pretrain_datasets = []
-            breakpoint()
             speech_split, text_split = split.split('|')
 
             ## Speech pre-train
@@ -419,7 +415,6 @@ class SpeechT5Task(LegacyFairseqTask):
             ]
             # hubert v1: pad_audio=True, random_crop=False;
             self.args.dec_weight = getattr(self.args, "dec_weight", 1.0)
-            breakpoint()
             pretrain_datasets.append(
                 SpeechPretrainDataset(
                     manifest,
@@ -438,6 +433,7 @@ class SpeechT5Task(LegacyFairseqTask):
                     random_crop=self.args.random_crop,
                     single_target=self.args.single_target,
                     reduction_factor=self.args.reduction_factor,
+                    share_fbank_input=self.args.share_fbank_input
                 )
             )
             sample_ratios.append(sum([pretrain_datasets[0].size(i) for i in range(len(pretrain_datasets[0]))]))
@@ -526,6 +522,14 @@ class SpeechT5Task(LegacyFairseqTask):
                 self.datasets[split] = MultitaskDataset(
                     pretrain_datasets, batch_ratio=batch_ratio
                 )
+    
+
+    def gpu_memory(self, device):
+        
+        allocated = torch.cuda.memory_allocated(device) / (1024 ** 2)  # in MB
+        reserved = torch.cuda.memory_reserved(device) / (1024 ** 2)    # in MB
+        print(f"GPU memory allocated: {allocated:.2f} MB")
+        print(f"GPU memory reserved: {reserved:.2f} MB")
 
     def train_step(
         self, sample, model, criterion, optimizer, update_num, ignore_grad=False
@@ -536,6 +540,8 @@ class SpeechT5Task(LegacyFairseqTask):
         # Junyi: not use sample_size, but normalize the loss locally
         agg_loss, agg_sample_size, agg_logging_output = 0.0, 1.0, {}
         agg_logging_output['sample_size'] = 1
+        # device = next(model.parameters()).device
+        # print("Pointers same?", sample["target"].data_ptr() == sample["net_input"]["src_tokens"].data_ptr())
 
         def forward_backward(model, samples, weight=1.0):
             nonlocal agg_loss, agg_logging_output
@@ -549,6 +555,7 @@ class SpeechT5Task(LegacyFairseqTask):
                 loss *= weight
             loss = loss / sample_size
             optimizer.backward(loss)
+            # self.gpu_memory(device=device)
             agg_loss += loss.detach().item()
             # # TODO make summing of the sample sizes configurable
             for k in logging_output:

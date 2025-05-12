@@ -21,6 +21,8 @@ import librosa
 from fairseq.data.audio.speech_to_text_dataset import get_features_or_waveform
 from fairseq.data import data_utils
 from fairseq.data.fairseq_dataset import FairseqDataset
+import torchaudio
+import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +184,34 @@ def logmelfilterbank(
 
     return np.log10(np.maximum(eps, np.dot(spc, mel_basis.T)))
 
+def torch_Fbank(wav, sample_rate=16000, n_mels=80, n_fft=1024, hop_length=256, fmin=80, fmax=7600, eps=1e-10):
+    # wav: Tensor of shape (T,)
+    if wav.dim() == 1:
+        wav = wav.unsqueeze(0)  # (1, T)
+
+    mel_spectrogram_transform = torchaudio.transforms.MelSpectrogram(
+        sample_rate=sample_rate,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        win_length=n_fft,
+        window_fn=torch.hann_window,
+        n_mels=n_mels,
+        f_min=fmin,
+        f_max=fmax,
+        power=2.0,  # power spectrogram (magnitude squared)
+        normalized=False,
+    )
+
+    # Move transform to same device as wav (CPU or GPU)
+    mel_spectrogram_transform = mel_spectrogram_transform
+
+    # Apply
+    mel_spec = mel_spectrogram_transform(wav)  # (batch, n_mels, time)
+
+    # Take log10
+    log_mel_spec = torch.log10(torch.clamp(mel_spec, min=eps))
+
+    return log_mel_spec.squeeze(0).transpose(0, 1)  # (time, n_mels)
 
 class SpeechPretrainDataset(FairseqDataset):
     def __init__(
@@ -203,6 +233,8 @@ class SpeechPretrainDataset(FairseqDataset):
         random_crop: bool = False,
         single_target: bool = False,
         reduction_factor: int = 1,
+        share_fbank_input:bool=False,
+        
     ):
         self.audio_root, self.audio_names, inds, tot, self.sizes, self.spk_embeds = load_audio(
             manifest_path, max_keep_sample_size, min_keep_sample_size
@@ -213,7 +245,7 @@ class SpeechPretrainDataset(FairseqDataset):
         self.sample_rate = sample_rate
         self.shuffle = shuffle
         self.random_crop = random_crop
-
+        self.share_fbank_input = share_fbank_input
         self.num_labels = len(label_paths)
         self.pad_list = pad_list
         self.eos_list = eos_list
@@ -225,7 +257,6 @@ class SpeechPretrainDataset(FairseqDataset):
             else label_rates
         )
         self.store_labels = store_labels
-        # breakpoint()
         if store_labels:
             self.label_list = [load_label(p, inds, tot) for p in label_paths]
         else:
@@ -250,21 +281,36 @@ class SpeechPretrainDataset(FairseqDataset):
             f"normalize={normalize}, max_sample_size={self.max_sample_size}"
         )
 
+    # def get_audio(self, index):
+    #     import soundfile as sf
+
+    #     wav_path = os.path.join(self.audio_root, self.audio_names[index])
+    #     wav, cur_sample_rate = sf.read(wav_path)
+    #     wav = torch.from_numpy(wav).float()
+    #     fbank = logmelfilterbank(
+    #         wav.view(-1).cpu().numpy(), 16000
+    #     )
+    #     fbank = torch.from_numpy(fbank).float()
+    #     wav = self.postprocess(wav, cur_sample_rate)
+    #     return wav, fbank
+    
     def get_audio(self, index):
         import soundfile as sf
 
         wav_path = os.path.join(self.audio_root, self.audio_names[index])
         wav, cur_sample_rate = sf.read(wav_path)
         wav = torch.from_numpy(wav).float()
-        fbank = logmelfilterbank(
-            wav.view(-1).cpu().numpy(), 16000
-        )
-        fbank = torch.from_numpy(fbank).float()
+        if self.share_fbank_input:
+            hop_length = 160
+            fbank = torch_Fbank(wav.cpu(), sample_rate=16000, hop_length=hop_length)
+        else:
+            fbank = torch_Fbank(wav.cpu(), sample_rate=16000)
+        # if self.input_type == 'wav':
         wav = self.postprocess(wav, cur_sample_rate)
+
         return wav, fbank
 
     def get_label(self, index, label_idx):
-        # breakpoint()
         if self.store_labels:
             label = self.label_list[label_idx][index]
         else:
@@ -291,6 +337,9 @@ class SpeechPretrainDataset(FairseqDataset):
             os.path.join(self.spkdir, self.spk_embeds[index])
         )
         spkembs = torch.from_numpy(spkembs).float()
+        # if self.src_input == 'fbank':
+        #     return {"id": index, "source": fbank, "target": fbank, "label_list": labels, 'spkembs': spkembs}
+        # else: 
         return {"id": index, "source": wav, "target": fbank, "label_list": labels, 'spkembs': spkembs}
 
     def __len__(self):
@@ -316,7 +365,6 @@ class SpeechPretrainDataset(FairseqDataset):
         samples = [s for s in samples if s["source"] is not None]
         if len(samples) == 0:
             return {}
-        # breakpoint()
         audios = [s["source"] for s in samples]
         audio_sizes = [len(s) for s in audios]
 
@@ -367,15 +415,23 @@ class SpeechPretrainDataset(FairseqDataset):
         targets_list, lengths_list, ntokens_list = self.collater_label(
             targets_by_label, audio_size, audio_starts
         )
-
-        net_input = {
-            "source": collated_audios, 
-            "padding_mask": padding_mask, 
-            "prev_output_tokens": prev_output_tokens,
-            "spkembs": spkembs,
-            "tgt_lengths": collated_fbanks_size_in,
-        }
-
+        if self.share_fbank_input:
+            net_input = {
+                "source": collated_fbanks.clone(), 
+                "padding_mask": padding_mask, 
+                "prev_output_tokens": prev_output_tokens,
+                "spkembs": spkembs,
+                "tgt_lengths": collated_fbanks_size_in,
+            }
+        else:
+            net_input = {
+                "source": collated_audios, 
+                "padding_mask": padding_mask, 
+                "prev_output_tokens": prev_output_tokens,
+                "spkembs": spkembs,
+                "tgt_lengths": collated_fbanks_size_in,
+            }
+            
         batch = {
             "id": torch.LongTensor([s["id"] for s in samples]),
             "net_input": net_input,
@@ -472,7 +528,28 @@ class SpeechPretrainDataset(FairseqDataset):
 
         order.append(self.sizes)
         return np.lexsort(order)[::-1]
+    
+    # def postprocess(self, wav: torch.Tensor, cur_sample_rate: int, target_sample_rate: int, normalize: bool = True) -> torch.Tensor:
+    #     """
+    #     Postprocess a waveform tensor:
+    #     - Convert to mono if needed
+    #     - Verify sample rate
+    #     - Normalize if requested
+    #     """
+    #     if wav.ndim == 2:
+    #         wav = wav.mean(dim=-1)
 
+    #     if wav.ndim != 1:
+    #         raise ValueError(f"Expected 1D waveform after averaging, but got shape {wav.shape}")
+
+    #     if cur_sample_rate != target_sample_rate:
+    #         raise ValueError(f"Sample rate mismatch: got {cur_sample_rate}, expected {target_sample_rate}")
+
+    #     if normalize:
+    #         wav = F.layer_norm(wav, wav.shape)
+
+    #     return wav
+    
     def postprocess(self, wav, cur_sample_rate):
         if wav.dim() == 2:
             wav = wav.mean(-1)

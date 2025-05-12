@@ -90,7 +90,6 @@ class SpeechPretrainCriterion(FairseqCriterion):
         """
         if self.dec_weight == 0:
             sample["net_input"]["only_hubert"] = True
-        breakpoint()
         net_output, net_output_dec = model(target_list=sample["target_list"], **sample["net_input"])
         loss = 0.
         sample_size = 0

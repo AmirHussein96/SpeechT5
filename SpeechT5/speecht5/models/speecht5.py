@@ -251,7 +251,7 @@ class T5TransformerModel(FairseqEncoderDecoderModel):
             "--encoder-speech-prenet",
             default="conv",
             type=str,
-            choices=["conv", "linear", "mel"],
+            choices=["conv", "linear", "mel", "prep_fbank"],
             help="The type of encoder speech prenet, e.g., conv or linear or mel."
         )
         parser.add_argument(
